@@ -122,52 +122,97 @@ change.
 
 ---
 
-## Grammar
+## Language
 
-The `.markgraf` file is plain text, parsed by hand-rolled combinators. Comments
-are not supported — keep frame names self-documenting.
+A **frame** is one beat in the animation. Statements inside a frame either
+change the graph shape (structural) or move data along it (flow).
 
-```
-seed <int>?                        -- optional, controls layout RNG; default 0
-
-frame <name> { <statements> }
-frame "<quoted name>" { <statements> }
-```
-
-`<name>` is a bare identifier (`setup`, `cache_hit`); `<quoted name>` allows
-spaces. Always quote multi-word names.
-
-### Statements (structural)
+### Frames
 
 ```
-+node <id> "<label>"               -- introduce node
--node <id>                         -- remove node
-+edge <from> <to> "<label>"?       -- introduce edge (label optional)
--edge <from> <to>                  -- remove edge
+frame setup { +node a "A" +node b "B" +edge a b }
+frame "first request" { a -> b "hello" }
+```
+
+Names are unquoted identifiers (`setup`, `cache_hit`) or quoted strings
+(`"first request"`). Use quotes for spaces.
+
+### Adding and removing nodes
+
+```
++node api "API"        # introduce node
+-node api              # remove node
+```
+
+### Adding and removing edges
+
+```
++edge api db "writes"  # label is optional
+-edge api db
 ```
 
 Edges are directional — `+edge a b` ≠ `+edge b a`. The arrowhead points from
 `from` to `to`.
 
-### Statements (flow)
+### Tokens (data flow)
 
 ```
-<from> -> <to> "<label>"?          -- token traversal; label is what the chip says
-+bubble <id> <node> "<text>"?      -- attach a bubble to a node
--bubble <id>                       -- remove a previously-attached bubble
+client -> api "GET /user"
+api -> db "SELECT"
 ```
 
-### Composition
+Each statement renders a circle that morphs out of the source, slides along
+the edge, and morphs into the target. Consecutive tokens that chain (the
+`to` of one matches the `from` of the next) render as ONE continuously
+travelling dot — that's how requests feel like one motion through a stack.
 
-`par { … }` and `seq { … }` (covered above) are the only block forms. They
-nest. The frame body is implicitly a `seq`, so most files don't write
-`seq { … }` explicitly — only inside a `par` to group a sequential leg.
+### Bubbles (commentary)
+
+```
++bubble skip cache "skipped DB!"
+-bubble skip
+```
+
+A bubble is anchored to a node and persists across frames until you remove
+it. Use bubbles for things the topology can't say on its own — "async",
+"cache hit", "retry". Use node/edge labels for everything else.
+
+### Concurrency: `par` and `seq`
+
+```
+frame "cache hit" {
+  client -> api "GET"
+  par {
+    api -> cache "HIT"
+    +bubble skip cache "skipped DB!"
+  }
+  -bubble skip
+}
+```
+
+The frame body is implicitly `seq` — children run one after another. Wrap
+children in `par { … }` to play them at the same time. `par` and `seq` nest:
 
 ```
 par {
-  seq { api -> svcA; svcA -> db }    -- this leg is a chain
-  seq { api -> svcB; svcB -> cache } -- happening at the same time
+  seq { api -> svcA; svcA -> db }    # this leg is a chain
+  seq { api -> svcB; svcB -> cache } # happening at the same time
 }
+```
+
+### Top of file: `seed`
+
+```
+seed 1                  # optional, controls layout RNG (default 0)
+
+frame setup { ... }
+```
+
+### Comments
+
+```
+# Line comments start with '#' and run to end of line.
++node a "A"     # trailing comments work too
 ```
 
 ---
