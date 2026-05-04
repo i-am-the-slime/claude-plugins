@@ -1,0 +1,15 @@
+{
+  "name": "i-am-the-slime",
+  "owner": {
+    "name": "Mark Eibes",
+    "email": "mark.eibes@googlemail.com"
+  },
+  "description": "Skills, agents, and commands by i-am-the-slime",
+  "plugins": [
+    {
+      "name": "markgraf",
+      "source": "./plugins/markgraf",
+      "description": "Authoring rules + grammar reference for the markgraf animation language"
+    }
+  ]
+}
