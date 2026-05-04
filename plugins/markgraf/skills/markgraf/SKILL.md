@@ -313,8 +313,47 @@ You are writing this without seeing the rendered output. To stay grounded:
 - Default timing is tuned for a "narrating-while-presenting" cadence
   (`tokenSpeed: 100`, `minTokenDuration: 1.4s`). If a flow has too many
   events, the fix is splitting frames, not speeding up tokens.
-- The user runs `markgraf my.markgraf --play` to review — they see the
-  result, you don't. So lean on these textual tells: long labels, missing
-  `par` for things that happen together, deeply nested blocks, dangling
+- The user runs `markgraf <file> --play` to review — they see the result,
+  you don't. So lean on these textual tells: long labels, missing `par`
+  for things that happen together, deeply nested blocks, dangling
   bubbles, structural+flow in one frame. Each is a problem you can spot
   from the source alone.
+
+### Tell the user how to preview
+
+Whenever you write or edit a `.markgraf` file, end your reply with the
+exact command the user can run to see the result. Don't assume they
+remember the flags. Two patterns:
+
+```
+# Preview the file you just wrote / edited:
+markgraf path/to/foo.markgraf --play
+
+# Or render to mp4 (no window):
+markgraf path/to/foo.markgraf -o foo.mp4
+```
+
+For quick experiments that don't need a saved file, suggest the stdin
+form so the user doesn't have to manage a temp file:
+
+```
+# Pipe a heredoc directly into the player:
+markgraf --play <<'EOF'
+frame setup { +node a "A" +node b "B" +edge a b }
+frame greet { a -> b "hello" }
+EOF
+```
+
+In **fish**, heredocs aren't supported — use a single-quoted multi-line
+string instead:
+
+```
+echo '
+frame setup { +node a "A" +node b "B" +edge a b }
+frame greet { a -> b "hello" }
+' | markgraf --play
+```
+
+The player opens immediately; in it, `space` toggles play/pause, arrow
+keys scrub frames, `r` restarts, `q` quits. Drag-and-drop a different
+`.markgraf` file onto the window to reload.
