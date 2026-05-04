@@ -324,41 +324,35 @@ You are writing this without seeing the rendered output. To stay grounded:
   bubbles, structural+flow in one frame. Each is a problem you can spot
   from the source alone.
 
-### Tell the user how to preview
+### Open the preview yourself
 
-Whenever you write or edit a `.markgraf` file, end your reply with the
-exact command the user can run to see the result. Don't assume they
-remember the flags. Two patterns:
+After writing or editing a `.markgraf` file, **open the player for the user**
+— don't just tell them the command. The player is a long-running window so
+launch it with the Bash tool's `run_in_background: true`:
 
 ```
-# Preview the file you just wrote / edited:
 markgraf path/to/foo.markgraf --play
-
-# Or render to mp4 (no window):
-markgraf path/to/foo.markgraf -o foo.mp4
 ```
 
-For quick experiments that don't need a saved file, suggest the stdin
-form so the user doesn't have to manage a temp file:
+(use the Bash tool with `run_in_background: true` and a short description
+like "preview foo.markgraf"; the window opens immediately, the user sees the
+animation, and you don't block waiting for them to close it).
+
+If the user has not saved a file (e.g. they pasted a snippet inline), pipe
+the source into stdin instead — same `run_in_background: true`:
 
 ```
-# Pipe a heredoc directly into the player:
-markgraf --play <<'EOF'
-frame setup { +node a "A" +node b "B" +edge a b }
-frame greet { a -> b "hello" }
-EOF
+echo '<the source>' | markgraf --play
 ```
 
-In **fish**, heredocs aren't supported — use a single-quoted multi-line
-string instead:
+(`bash -c` so the pipe is interpreted; or write the snippet to a tempfile
+first if quoting gets ugly).
 
-```
-echo '
-frame setup { +node a "A" +node b "B" +edge a b }
-frame greet { a -> b "hello" }
-' | markgraf --play
-```
+You should still **mention** the same command in your text reply, so the
+user can re-run it later without scrolling back. But don't make them copy-
+paste to see what you just wrote.
 
-The player opens immediately; in it, `space` toggles play/pause, arrow
-keys scrub frames, `r` restarts, `q` quits. Drag-and-drop a different
-`.markgraf` file onto the window to reload.
+In the player: `space` toggles play/pause, arrow keys scrub frames,
+`r` restarts, `q` quits. Drag-and-drop a different `.markgraf` file onto
+the window to reload from that file.
+
