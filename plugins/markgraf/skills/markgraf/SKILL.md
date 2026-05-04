@@ -1,3 +1,8 @@
+---
+name: markgraf
+description: Authoring rules + grammar reference for the markgraf animation language. Use when the user is writing or editing .markgraf files, talks about markgraf, asks about animations/animated diagrams of systems, or works on a graph diagram described as nodes/edges/tokens/frames flowing through a system. Covers syntax (frames, +node/-node, +edge/-edge, tokens with `->`, +bubble/-bubble, par/seq blocks, seed, # comments) and authoring rules (short labels, par for simultaneity, one concept per frame, chained tokens for flows). Also explains how to preview animations via the markgraf CLI.
+---
+
 # markgraf-cli — authoring animations
 
 `markgraf` renders short animated graph diagrams from a tiny declarative source
