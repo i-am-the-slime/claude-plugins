@@ -1,6 +1,6 @@
 ---
 name: markgraf
-description: Authoring rules + grammar reference for the markgraf animation language. Use when the user is writing or editing .markgraf files, talks about markgraf, asks about animations/animated diagrams of systems, or works on a graph diagram described as nodes/edges/tokens/frames flowing through a system. Covers syntax (frames, +node/-node, +edge/-edge, tokens with `->`, +bubble/-bubble, par/seq blocks, seed, # comments) and authoring rules (short labels, par for simultaneity, one concept per frame, chained tokens for flows). Also explains how to preview animations via the markgraf CLI.
+description: Authoring rules + grammar reference for the markgraf animation language. Use when the user is writing or editing .markgraf files, talks about markgraf, asks about animations/animated diagrams of systems, or works on a graph diagram described as nodes/edges/tokens/frames flowing through a system. Covers syntax (frames, +node/-node, +edge/-edge, tokens with `->` / `<-`, par/seq blocks, seed, # comments), strict-mode validation rules, and authoring principles (C4 levels, short labels, par for simultaneity, one concept per frame, chained tokens for flows). Also explains how to preview and parse-check animations via the markgraf CLI.
 ---
 
 # markgraf-cli — authoring animations
@@ -34,6 +34,197 @@ operations to the start of the frame and runs flow ops afterwards. But a clean
 mental model is: **one beat per frame**. Mixing structural and flow inside one
 frame works but is harder to read on the page.
 
+### Principles (and where they come from)
+
+The rules below aren't taste — they fall out of a small set of
+results from graph drawing and perception research. Knowing the *why*
+helps you judge edge cases.
+
+- **A diagram is a claim, not a noun-pile.** Pick one question the
+  diagram answers ("what calls what?", "what contains what?", "what
+  flows where at runtime?") and commit. The default AI failure mode is
+  conflating call-graph, dependency, and deployment edges into one
+  ambiguous "→". Source: practitioner consensus (Brown's C4 model,
+  ArchiMate); not measured, but load-bearing.
+
+- **The y-axis means something.** In a layered (Sugiyama) layout,
+  vertical position = causal/dependency depth. Putting `main` "in the
+  middle because it looks balanced" silently lies about the structure.
+  Source: Sugiyama, Tagawa, Toda (1981); this is what ELK implements
+  and therefore what markgraf inherits.
+
+- **Edge crossings dominate readability.** Of all the aesthetic
+  criteria (crossings, bends, symmetry, angular resolution), crossings
+  hurt comprehension by the largest measured margin; bends are second.
+  Source: Helen Purchase, "Which Aesthetic has the Greatest Effect on
+  Human Understanding?" (1997). Practical consequence: let the layout
+  engine fight crossings — don't hand-place to make something "look
+  tidy" if it adds a crossing.
+
+- **Containment and adjacency are different channels.** Nesting (box
+  inside box) means "is part of"; an edge means "talks to / depends
+  on". Using both for the same relationship is incoherent. Source:
+  Gestalt proximity + common region (Wertheimer 1923; applied to
+  visualization in Colin Ware, *Information Visualization: Perception
+  for Design*).
+
+- **Object constancy is what makes animated transitions teach.**
+  Animated transitions help comprehension *only* when objects preserve
+  identity across the change and concurrent things are visibly
+  concurrent; staged transitions beat "everything moves at once".
+  Source: Heer & Robertson, "Animated Transitions in Statistical Data
+  Graphics" (2007). This is the empirical basis for `par`/`seq` and
+  the token chaining behaviour.
+
+- **Common fate groups moving things.** Tokens travelling together
+  read as one logical message; tokens travelling separately read as
+  unrelated events. Source: Gestalt common fate (Wertheimer); validated
+  for displays in Ware. Practical consequence: don't `par` two
+  unrelated tokens just to save a frame — the eye will fuse them.
+
+- **Tracking budget is small.** Viewers can reliably track ~3–8
+  independently moving objects, fewer when they're fast or crowded.
+  Source: Pylyshyn & Storm (1988); Alvarez & Franconeri (2007). For
+  markgraf: more than ~4 simultaneous tokens in a `par` is a smell.
+
+- **Hold time after a state change is real.** Motion-design folklore
+  (not measured): every meaningful change deserves ~300–500ms of
+  stillness so the eye can consolidate. This is why
+  `minTokenDuration: 1.4s` exists and why "speeding up tokens" rarely
+  fixes a crowded frame — splitting frames does.
+
+- **"5–9 boxes per view" is folklore, not Miller.** Miller's 1956
+  "7±2" was about working memory for unrelated items, not visual
+  chunking. The diagramming convention is good advice anyway: at the
+  top level, fewer than ~9 nodes lets a viewer hold the whole shape in
+  their head. Treat it as a budget, not a law.
+
+### Pick a C4 level before you start
+
+Simon Brown's C4 model (practitioner convention, not measured, but
+widely adopted) gives a vocabulary for *which* diagram you're drawing.
+A markgraf animation should sit at exactly one level — mixing them is
+the fastest way to produce a noun-pile:
+
+| Level | Boxes are | Audience | Good markgraf use |
+|---|---|---|---|
+| **1. Context** | the system + external actors/systems | non-technical stakeholders | "user hits our product, which talks to Stripe and Postgres" |
+| **2. Container** | deployable/runnable units (web app, API, DB, queue) | technical, on/near the team | most architecture animations live here |
+| **3. Component** | major groupings inside one container | developers on that container | "inside the API: auth middleware → handler → repo" |
+| **4. Code** | classes/functions | rarely worth drawing | skip — IDE does this better |
+
+Concrete rules for markgraf:
+
+- **State the level in the first frame name.** `frame "container view"`
+  or `frame "component view: api"`. The viewer needs to know what
+  altitude they're at before the first token moves.
+- **Don't cross levels in one file.** If you need to "zoom in", make a
+  *separate* `.markgraf` — the C4 insight is that each level is its
+  own diagram, not a sub-region of a bigger one. Linking is editorial,
+  not visual.
+- **Every box has a type.** Container-level boxes are *not*
+  interchangeable: a database behaves differently from a queue from a
+  stateless service. Encode the type in the label (`"Postgres"`, not
+  `"DB"`; `"SQS"`, not `"Queue"`) — markgraf has no shape vocabulary,
+  so the noun has to carry it.
+- **Every edge has a purpose + protocol.** C4's rule for static
+  diagrams ("Reads from, [JDBC]") maps to markgraf as: the token
+  label should name the *operation* (`"SELECT"`, `"publish"`,
+  `"GET /user"`). If the protocol matters (sync vs async, RPC vs
+  event), put it in the token label itself (`"publish (async)"`).
+
+The deepest C4 idea worth internalising: **a diagram has an implicit
+"above" and "below"**. If you can't say "this is the container view;
+the component view would expand the API box", you're not at a level
+— you're just drawing.
+
+### Refuse pipeline-ism
+
+The most common AI failure: every node has one in-edge and one
+out-edge, the whole diagram is `A → B → C → D → E`. Real systems are
+not pipelines. If your sketch looks like a pipeline, you are
+documenting **one user journey** through the system, not the system
+itself.
+
+Before writing, list:
+
+- **The hub.** What single thing does most of the work? It should
+  have ≥3 edges, often more. (A pipeline has no hub.)
+- **Fan-out points.** Where does one event become many — broadcasts,
+  parallel calls, write-then-also-log, primary + cache + analytics?
+- **Fan-in points.** Where do many sources funnel into one — every
+  service writing to one log, every request landing on one ingress?
+- **Back-edges and cycles.** Caches that invalidate, retries, queues
+  that feed services that publish back. Real systems have them.
+  Sugiyama will draw them with a distinct style; don't omit them just
+  because they break the top-to-bottom story.
+- **The thing that talks to everyone.** Auth, config, observability —
+  often deliberately drawn off to one side with edges to many other
+  nodes, so the topology *looks* the way it *is*.
+
+If your diagram lacks all of these, you've drawn a sequence diagram in
+disguise. Either pick a different claim (this *is* a user journey —
+fine, but say so) or zoom out / sideways to find the real shape.
+
+Concrete signs the diagram is too linear:
+
+- Every frame contains exactly one token, going one hop.
+- No `par` anywhere.
+- No chained `seq` flow (the headline reason chaining exists is to
+  render a multi-hop request as one continuous motion — if no frame
+  uses it, you've made the diagram more rigid than the system).
+- Every node has in-degree ≤ 1 and out-degree ≤ 1.
+- The whole thing reads top-to-bottom with no sideways glance.
+
+### Plan before you write a single frame
+
+This is the step that separates correct diagrams from amazing ones. Do
+this work *in your head or as a comment* before any `frame { … }` is
+written. If you can't answer all six, you don't have a diagram yet.
+
+1. **The claim.** One sentence: "this animation shows that X." If you
+   can't finish that sentence, you're not ready.
+2. **The level.** Context / Container / Component (rarely Code).
+3. **The hub.** Which one node has ≥3 edges and would lose the most
+   if removed? Name it. If you can't, you might be drawing a sequence
+   not a system.
+4. **The surprise.** What does the viewer not yet know that they
+   *should* know after watching? The cache they didn't expect, the
+   back-edge they didn't see coming, the fan-out hidden behind a
+   single arrow on the static diagram. **No surprise → no
+   animation.** A non-surprising diagram should be a still image.
+5. **The shape of the story.** A pacing template that works:
+   *setup* (one frame, all the boxes) → *naive case* (a flow that
+   "obviously" works) → *the catch* (what breaks, what's slow, what's
+   missing) → *the fix* (structural change introducing the new thing)
+   → *rerun* (the same naive flow, now exercising the new shape).
+   Five frames, one punchline. Other templates exist but this one is
+   the workhorse.
+6. **The frame budget.** Aim for **5–7 frames**. Eight is the upper
+   limit. If you have ten, you've written a slide deck — go cut.
+   Every frame you cut makes the survivors louder.
+
+### Dramatic structure (why animations work at all)
+
+A static diagram answers "what is the shape?" An animation answers
+"what *happens*?" — which is only worth doing when the answer has a
+moment of *change*. Three pillars:
+
+- **Setup → tension → release.** The setup frame establishes the
+  shape. Mid-frames create tension (a slow path, a missing piece, a
+  fan-out that overwhelms). The final frame releases it (the new
+  shape handles the load, the new edge eliminates the round-trip).
+  Without tension, the viewer has nothing to anticipate; without
+  release, nothing to remember.
+- **Show, then show again.** Run the *same flow* before and after a
+  structural change. The viewer's eye locks onto the difference. This
+  is why the cache example in the reference works: same `GET /user/42`
+  before and after; the cache is the punchline.
+- **One revelation per animation.** If you're trying to show three
+  surprises, you have three animations to write. Pick the one the
+  viewer needs most and cut the others — they'll dilute the impact of
+  the one that matters.
+
 ### What looks good
 
 - **One concept per frame.** "introduce cache" should *only* introduce the
@@ -44,8 +235,8 @@ frame works but is harder to read on the page.
   the player's keyframe scrubber.
 - **Use `par { }` to make things happen at the same time.** Default sequencing
   is `seq` (one after another). `par` is what gives the animation its
-  liveliness — a token landing at a node *while* a bubble pops out beside it
-  reads as cause-and-effect, not as two unrelated steps.
+  liveliness — two tokens leaving a node at the same instant read as a
+  fan-out, not as two unrelated steps.
 - **Let `seq` carry causation.** Inside a flow frame, `client -> api` followed
   by `api -> db` *automatically* chains: the second token leaves the API the
   instant the first arrives. This is what makes "request flows down through
@@ -54,37 +245,41 @@ frame works but is harder to read on the page.
 
 ### Rules of thumb (the ones that matter most)
 
-**Keep labels short.** Token, edge, and node labels render at a fixed text
+**Keep labels short.** Token and node labels render at a fixed text
 size onto small graph elements. A token chip showing `"GET /user/42 with
 session token"` either overflows or squishes the text to unreadable. Aim for:
 
 - **Tokens (the chip on a flowing dot):** verb + small noun. `"GET /user"`,
   `"SELECT"`, `"publish"`. Roughly ≤ 16 chars; never more than 24.
 - **Node labels:** noun. `"API"`, `"Cache"`, `"Order Service"`. Two words max.
-- **Edge labels:** rare — only when the edge has a *type* the topology
-  doesn't already say (`"http"` vs `"async"`). If unsure, omit.
 
 **Use `par { }` for things that happen together.** Default sequencing is `seq`
 (one after another). The animation only feels like a *system* if concurrent
-things actually appear concurrent — a token landing at a node *while* a bubble
-pops out beside it reads as cause-and-effect; the same two ops in series read
-as "and then, separately, also...".
+things actually appear concurrent — two tokens leaving a node in the same
+instant read as a real fan-out; the same two ops in series read as
+"and then, separately, also...".
 
 ```
 par {
-  api -> cache "HIT"            -- happens at the same time as
-  +bubble skip cache "no DB"    -- the bubble appearing
+  api -> cache "HIT"      -- both legs leave the API
+  api -> logger "trace"   -- in the same instant
 }
 ```
+
+**Don't reach for `par` just for visual balance.** If "B happens *after*
+A's response", that's `seq`, not `par`. Hedging ("in some deployments
+this is parallel") is a sign you're at the wrong C4 level or drawing
+two diagrams at once.
 
 `par` and `seq` nest. The frame body is implicitly a `seq`, so you only
 write `seq { … }` when you need an inner sequential block inside a `par`.
 
-**Use `seq` chaining to model a single request flowing through a stack.** If
-the *to* of one token matches the *from* of the next within a `seq` (the
-default), the engine renders ONE continuously travelling dot rather than
-three discrete tokens. This is what makes "request flows down through the
-stack" feel like one motion:
+**Chain by default.** Most multi-hop flows should be a chain, not a
+sequence of independent tokens. If the *to* of one token matches the
+*from* of the next within a `seq` (the default), the engine renders
+ONE continuously travelling dot — the literal animation of a request
+flowing through the stack. This single mechanic is what makes
+markgraf feel different from a sequence diagram. Use it.
 
 ```
 frame "request" {
@@ -92,6 +287,20 @@ frame "request" {
   api -> db "SELECT"             -- api, terminates at db — one motion
 }
 ```
+
+When you have `client -> api` then `api -> db`, **always** chain them
+unless you mean "api processes the request, *then later* talks to
+db." Inserting an unrelated op or an explicit `seq` block between
+them breaks the chain visually for no reason. If you find your
+animation has lots of one-hop frames, you've broken every chain.
+
+**Prefer `<-` over a second edge for responses.** If `+edge a b`
+exists, the reply flows back as `a <- b "reply"`, *not* by adding
+`+edge b a` and writing `b -> a "reply"`. The latter says "there are
+two parallel channels"; the former says "same channel, the reply
+comes back." 99% of request/response architecture uses one channel.
+Adding a second edge for the response visually doubles the topology
+and lies about the system. **Reach for `<-` automatically.**
 
 Break the chain (use `par`, or have the next leg start from a different
 node) when the flow actually fans out or branches.
@@ -102,28 +311,34 @@ node) when the flow actually fans out or branches.
 |---|---|---|
 | 8 frames showing one diagram appear piece by piece before any flow | Viewer is lost before the demo starts | One `setup` frame; start the story with the first flow |
 | Long flow with no `par` | Reads as an itemised list, not a system | Group concurrent legs in `par` |
-| `+bubble` without `-bubble` | Bubbles pile up across frames | Every `+bubble id` needs a matching `-bubble id` later (next frame, or same frame after the chain that motivates it) |
+| `par` chosen for balance ("only used seq so far") | Misreads sequence as concurrency | Use `seq` unless two events genuinely happen in the same instant |
+| Token going against an edge using `->` | Parser rejects: "no edge between X and Y" | Flip to `<-` (`a <- b "reply"`) — same edge, reverse motion |
 | Structural + flow in one frame | Two concurrent beats, neither reads | Split: structural frame, then flow frame |
 | Multiple identical-direction tokens between same pair | Looks like one flickering dot | Use one chained sequence, or `par` if they're truly concurrent |
 
-### When to use bubbles
+### Strict-mode validation (what the parser will reject)
 
-Bubbles are the diagram's **commentary track**. A bubble appears anchored to a
-node; use it when a viewer needs an *explanation* the topology can't carry on
-its own:
+markgraf is strict — the CLI's `--check` flag fails fast on any of these,
+so you can verify your file before declaring done.
 
-```
-+bubble skip cache "skipped DB!"   -- celebrate a cache hit
-+bubble dispatch queue "async"     -- distinguish fire-and-forget from RPC
-```
-
-Bubbles are NOT for labels — that's what node/edge labels are. If the
-information is intrinsic to the system (e.g. a node's name), use a label.
-If it's intrinsic to *this moment in time*, use a bubble.
-
-Bubbles persist across frames until you `-bubble id`. A bubble that lives for
-two frames re-anchors itself if the underlying node moves due to a structural
-change.
+- **Every token needs an edge.** `a -> b "msg"` requires an edge
+  between `a` and `b` that is currently visible (added by `+edge`, not
+  yet removed by `-edge`). No edge → `[ERROR] token a→b: no edge
+  between a and b`.
+- **Token direction must match or use `<-`.** If the edge is `+edge a b`
+  and the message flows from `b` back to `a`, write `a <- b "reply"`,
+  not `b -> a "reply"`. The reverse-arrow says "same edge, reverse
+  motion" — it does not create a second edge.
+- **Structural ops can't reference unknowns.** `+edge x y` requires
+  both nodes to exist (added by an earlier `+node`, not yet removed).
+  `-node x` and `-edge x y` require x (and the edge) to currently
+  exist. `~edge a b -> c d` (repoint) requires the old edge and both
+  new endpoints to exist.
+- **Frame names must be unique** within a file.
+- **No bubbles.** `+bubble`/`-bubble` syntax was removed; don't write
+  it. The commentary that used to live in bubbles now belongs in the
+  token label itself, in a node name, or — best — in the topology
+  (introduce the queue node, don't bubble "async" onto a generic edge).
 
 ---
 
@@ -149,10 +364,79 @@ Names are unquoted identifiers (`setup`, `cache_hit`) or quoted strings
 -node api              # remove node
 ```
 
+**Three label syntaxes — pick the right one:**
+
+```
++node api "API"                          # quoted: short titles
++node api : Authorization API            # colon: rest-of-line, no quotes needed
++node api |API
+                                          # pipe: multi-line, terse description
+holds session tokens
+proxies to all internal services|
+```
+
+The `|...|` form is the one that makes a diagram *teach*. Use it on the
+nodes that carry conceptual weight (the central hub, anything a new
+contributor would ask "but what does X do?" about) to give them a
+two-line subtitle. Keep the title bold-noun on the first line; the
+sentence on subsequent lines should be the kind of thing you'd say
+aloud pointing at it — what it owns, what's surprising about it, why
+it exists. **Not every node needs this** — only the ones whose
+*existence* is the point. Decorating leaf nodes with descriptions
+crowds the diagram.
+
+**Multi-label token carousels:** tokens accept multiple labels in
+sequence; the chip cycles through them while the token travels.
+Useful for showing a request's evolution (`"GET /user"` → `"check
+ACL"` → `"200"`):
+
+```
+client -> api "GET /user" "check ACL" "200"
+```
+
+Don't overuse — three labels max, and only when each carries different
+information.
+
+**Token labels accept `|…|` multi-line blocks too — and this is what
+makes a diagram *narrate* instead of just *moving*.** The token chip
+is a tiny speech bubble travelling along the edge; with `|…|` you can
+put a real sentence in it. Use this whenever a viewer would otherwise
+ask "wait, what was *that*?" between frames.
+
+```
+client -> api |POST /order
+adds line items
+returns 201 + Location|
+```
+
+**When to reach for it on tokens:**
+
+- The token represents a *decision* the viewer needs to understand,
+  not just a hop (`|cache HIT
+skip DB, return cached row|`).
+- The action carries a surprising precondition or postcondition
+  (`|publish event
+fire-and-forget — caller doesn't await|`).
+- The hop *is* the explanation (one beat that teaches what this edge
+  does, instead of a separate description elsewhere).
+
+**Keep it terse — full sentences, but short ones.** Three lines max,
+≤ 40 chars per line. The chip renders inline with the moving dot; a
+paragraph here will dominate the frame and slow the animation. Aim
+for the cadence of footnotes, not paragraphs.
+
+**Mix freely with short labels.** Most tokens stay as `"GET"` or
+`"SELECT"` — quick, mechanical. Reserve `|…|` for the 1-2 beats per
+animation that earn explanation. If every token has a `|…|` you've
+written a slideshow, not an animation.
+
+(`:` rest-of-line is *not* supported on tokens — it would eat the next
+token in a chained sequence. Use `|…|` or quoted strings.)
+
 ### Adding and removing edges
 
 ```
-+edge api db "writes"  # label is optional
++edge api db
 -edge api db
 ```
 
@@ -171,16 +455,16 @@ the edge, and morphs into the target. Consecutive tokens that chain (the
 `to` of one matches the `from` of the next) render as ONE continuously
 travelling dot — that's how requests feel like one motion through a stack.
 
-### Bubbles (commentary)
+### Reverse-direction tokens: `<-`
 
 ```
-+bubble skip cache "skipped DB!"
--bubble skip
+client -> api "GET"        # forward along +edge client api
+client <- api "200 OK"     # reverse along the same edge
 ```
 
-A bubble is anchored to a node and persists across frames until you remove
-it. Use bubbles for things the topology can't say on its own — "async",
-"cache hit", "retry". Use node/edge labels for everything else.
+`<-` says "same edge, motion reversed". It does *not* create a second
+edge. Use it for every response/reply that flows back along an edge
+already pointing the request way.
 
 ### Concurrency: `par` and `seq`
 
@@ -189,9 +473,9 @@ frame "cache hit" {
   client -> api "GET"
   par {
     api -> cache "HIT"
-    +bubble skip cache "skipped DB!"
+    api -> logger "trace"   # both leave the API in the same instant
   }
-  -bubble skip
+  client <- api "value"
 }
 ```
 
@@ -235,7 +519,7 @@ mismatch on macOS 26, the user needs to update Command Line Tools.
 ## CLI reference
 
 ```
-markgraf [INPUT] [-o out.mp4] [--fps 60] [--scale 2.0] [--play]
+markgraf [INPUT] [-o out.mp4] [--fps 60] [--scale 2.0] [--play] [--check]
 ```
 
 `INPUT` is optional: omit it to read from stdin (`pbpaste | markgraf --play`),
@@ -248,6 +532,7 @@ pass a path to read a file, or pass `-` for explicit stdin.
 | `--fps INT` | `60` | render frame rate |
 | `--scale NUMBER` | `2.0` | resolution multiplier; `2.0` is retina-quality |
 | `--play` | off | open the native macOS player instead of encoding |
+| `--check` | off | parse + validate only; print `OK` (exit 0) or `[ERROR] …` (exit 1). No rendering. Use this to typecheck your file. |
 
 ffmpeg is embedded — no system dependency. CLI is darwin-arm64 only as of
 v0.1.0.
@@ -270,6 +555,8 @@ frame setup {
 frame "direct read" {
   client -> api "GET /user/42"
   api -> db "SELECT"
+  api <- db "rows"
+  client <- api "200 OK"
 }
 
 frame "introduce cache" {
@@ -280,11 +567,9 @@ frame "introduce cache" {
 
 frame "cache hit" {
   client -> api "GET /user/42"
-  par {
-    api -> cache "HIT"
-    +bubble skip cache "skipped DB!"
-  }
-  -bubble skip
+  api -> cache "HIT"
+  api <- cache "value"
+  client <- api "200 OK"
 }
 
 frame "introduce queue" {
@@ -294,11 +579,7 @@ frame "introduce queue" {
 
 frame publish {
   client -> api "POST /order"
-  par {
-    api -> queue "publish"
-    +bubble dispatch queue "async dispatch"
-  }
-  -bubble dispatch
+  api -> queue "publish (async)"
 }
 ```
 
@@ -306,23 +587,198 @@ Read top to bottom: structural setup → simple flow → structural change →
 flow showing the *new* path → another structural change → flow with async
 fan-out. Each frame earns its place by adding one idea.
 
+This is the *setup → naive → catch → fix → rerun* template in concrete
+form. The "catch" is implicit (the naive `direct read` goes to the
+DB every time — visibly the slow path); the "fix" is `introduce
+cache`; the "rerun" is `cache hit` showing the new shape exercised by
+the same request.
+
+---
+
+## Good vs. great: the same diagram, two ways
+
+Same task — "explain how our service handles a write": same actors,
+same outcome. The first version passes `--check` and is informative.
+The second teaches.
+
+### Good (correct, dull)
+
+```
+frame setup {
+  +node client "Client"
+  +node api    "API"
+  +node db     "Database"
+  +node cache  "Cache"
+  +edge client api
+  +edge api db
+  +edge api cache
+}
+
+frame "write request" {
+  client -> api "POST /user"
+  api -> db "INSERT"
+}
+
+frame "invalidate cache" {
+  api -> cache "DEL user:42"
+}
+
+frame "respond" {
+  client <- api "201"
+}
+```
+
+Four frames. Each does one thing. Parses, renders, viewer comes away
+with "API writes to DB and invalidates the cache, then responds."
+Fine. Not memorable.
+
+### Great (same content, structured)
+
+```
+frame setup {
+  +node client "Client"
+  +node api    "API"
+  +node db     "Database"
+  +node cache  "Cache"
+  +edge client api
+  +edge api db
+  +edge api cache
+}
+
+frame "naive write: forget the cache" {
+  client -> api "POST /user"
+  api -> db "INSERT"
+  client <- api "201"
+}
+
+frame "the catch" {
+  client -> api |GET /user/42
+returns STALE value
+from cache|
+  api <- cache "old row"
+  client <- api "200 (stale!)"
+}
+
+frame "fix: invalidate on write" {
+  client -> api "POST /user"
+  api -> db "INSERT"
+  par {
+    api -> cache "DEL user:42"
+    client <- api "201"
+  }
+}
+
+frame "rerun: GET now hits DB and refills" {
+  client -> api "GET /user/42"
+  api -> cache "MISS"
+  api -> db "SELECT"
+  api <- db "fresh row"
+  client <- api "200 (fresh)"
+}
+```
+
+Five frames. Setup, *naive* (writes but ignores cache), *catch*
+(viewer watches a stale read — the surprise), *fix* (structural
+addition: cache invalidation), *rerun* (the same GET now does the
+right thing, and the viewer sees it). Same boxes, same edges, same
+total information — but now the diagram *teaches*.
+
+**What changed:**
+
+- Added a *naive* frame that's deliberately wrong, so the *fix* has
+  something to fix.
+- The `|…|` multi-line on the stale GET is a footnote the viewer
+  needs *at that moment* (without it, "200 (stale!)" might not land).
+- `par` in the fix frame makes "invalidate happens at the same time
+  as the response" visually true — not "and then, separately…".
+- Chained tokens in the rerun frame (`api -> cache "MISS"` then
+  `api -> db "SELECT"`) render as one motion: the viewer watches a
+  single dot navigate the new shape.
+- Reverse tokens (`<-`) throughout. No paired-edge clutter.
+- Frame names *narrate*: "the catch", "fix", "rerun" — the viewer
+  knows what each beat is *for*.
+
+The difference between these is not skill at markgraf; it's whether
+you did the planning step at the top before writing. If you find your
+first draft looks like the "good" version, your task is to identify
+the missing *naive → catch → fix* arc and rewrite around it.
+
 ---
 
 ## Iteration
 
-You are writing this without seeing the rendered output. To stay grounded:
+You are writing this without seeing the rendered output. Use the CLI's
+built-in checker — it's how you typecheck markgraf.
 
-- Read each `frame { … }` aloud as a sentence in plain English ("the API
-  fans out: it queues a publish *and* posts a notice"). If you can't, the
-  frame is doing too much — split it.
+### Always run `--check` before declaring done
+
+After writing or editing any `.markgraf` file, run:
+
+```
+markgraf path/to/foo.markgraf --check
+```
+
+- Exit 0 + `OK` → parse + strict validation + schedule build all passed.
+  The file will at least *open* in the player.
+- Exit 1 + an `[ERROR] …` message → fix the reported issue and re-run.
+  Common errors and their meaning are in the **Strict-mode validation**
+  section above. Don't ship a file that doesn't pass `--check`.
+
+`--check` does not render; it's fast and safe to run repeatedly.
+
+### Then read it as prose
+
+`--check` catches mechanical errors. It does not catch *taste* errors:
+
+- Read each `frame { … }` aloud as a sentence in plain English ("the
+  API fans out: it queues a publish *and* logs a trace"). If you
+  can't, the frame is doing too much — split it.
 - Default timing is tuned for a "narrating-while-presenting" cadence
   (`tokenSpeed: 100`, `minTokenDuration: 1.4s`). If a flow has too many
   events, the fix is splitting frames, not speeding up tokens.
-- The user runs `markgraf <file> --play` to review — they see the result,
-  you don't. So lean on these textual tells: long labels, missing `par`
-  for things that happen together, deeply nested blocks, dangling
-  bubbles, structural+flow in one frame. Each is a problem you can spot
-  from the source alone.
+- Textual tells `--check` won't catch: long labels, missing `par` for
+  genuinely concurrent things, `par` used for visual balance, deeply
+  nested blocks, structural+flow in one frame, hedging in labels ("in
+  some deployments…"). Spot these from the source alone.
+
+### Kill your darlings (the cut pass)
+
+After `--check` passes, do one mandatory pass where you **only cut**.
+Adding more is forbidden in this pass. For each frame, ask:
+
+- **"Could I delete this frame and lose nothing essential?"** If yes,
+  delete it. Don't argue with yourself.
+- **"Is this token a hop or an explanation?"** If a hop, can the
+  surrounding chain absorb it? If an explanation, does it deserve a
+  `|…|` block, or can it go on a node label instead?
+- **"Does this node appear in the punchline?"** If a node is
+  introduced but never participates in the surprise/reveal, it might
+  be decoration. Cut, or move it to setup with no fanfare.
+- **"Did I solve a problem the viewer didn't have?"** Frames added
+  "for completeness" usually make the animation slower without making
+  it clearer.
+
+A useful target: cut at least one frame on every pass. If you can't,
+your draft was already tight. If you keep cutting and the animation
+still reads, your *next* draft will be tighter still. The cost of one
+cut frame is essentially zero; the cost of one bloated animation is
+that nobody watches it twice.
+
+### Compare to the template
+
+After cutting, check your animation against the workhorse template
+from "Plan before you write": *setup → naive → catch → fix → rerun*.
+
+- Did you do setup as one frame, or did you dribble nodes in?
+- Did you actually show the naive case before introducing the fix?
+- Is the catch *visible* (a slow path the viewer can see)?
+- Did you re-run the naive flow against the new shape, so the viewer
+  watches the fix work?
+- Or did you ship a "here are the boxes, here are the arrows" tour?
+
+If the answer is the tour, you have a diagram with an `--play` button,
+not an animation. Restructure or accept that this should be a still
+image instead.
 
 ### Open the preview yourself
 
