@@ -204,6 +204,31 @@ written. If you can't answer all six, you don't have a diagram yet.
    limit. If you have ten, you've written a slide deck — go cut.
    Every frame you cut makes the survivors louder.
 
+### Introduce nodes one beat at a time
+
+Don't dump the whole topology in the setup frame. Frontloading all
+the nodes overwhelms the viewer before anything has *happened* —
+they're trying to parse five labels they have no reason to care
+about yet. Instead, **introduce each node at the moment the story
+needs it**, and ideally show it doing something in the same frame:
+
+- Frame 1: the two ends of the simplest possible flow (e.g. `Client`
+  + `API`). One token, one beat. The viewer locks in.
+- Frame 2: introduce the next thing the story needs (e.g. `Database`
+  for the slow source of truth) and immediately run a flow that uses
+  it. Each new node *earns* its introduction by being used.
+- Continue until all the actors are on stage.
+
+This pattern composes naturally with the *setup → naive → catch →
+fix → rerun* template: the "naive" stage usually only needs 2-3
+nodes; the "catch" stage introduces the thing that creates the
+problem; the "fix" stage adds the thing that solves it. Each
+structural change is a *reveal*, not a precondition.
+
+A useful rule: if a node never appears as the *star* of a frame
+(either introduced there, or central to the action), it probably
+shouldn't exist. Cut it.
+
 ### Dramatic structure (why animations work at all)
 
 A static diagram answers "what is the shape?" An animation answers
@@ -375,15 +400,25 @@ holds session tokens
 proxies to all internal services|
 ```
 
-The `|...|` form is the one that makes a diagram *teach*. Use it on the
-nodes that carry conceptual weight (the central hub, anything a new
-contributor would ask "but what does X do?" about) to give them a
-two-line subtitle. Keep the title bold-noun on the first line; the
-sentence on subsequent lines should be the kind of thing you'd say
-aloud pointing at it — what it owns, what's surprising about it, why
-it exists. **Not every node needs this** — only the ones whose
-*existence* is the point. Decorating leaf nodes with descriptions
-crowds the diagram.
+**Node labels stay short — a keyword noun, two words max.** The
+diagram has limited space inside each box; cramming sentences into
+nodes makes the layout busy and steals attention from the moving
+parts. Narration lives on the *tokens*, not the boxes. A node's job
+is to be a stable landmark the eye can navigate around.
+
+```
++node cache "Cache"           # good — short, recognisable
++node cache "Redis Cache"     # also fine — type-bearing
++node cache |Cache            # BAD — don't do this
+LRU keyed by user id
+evicted after 5min|
+```
+
+The `|...|` and `:` forms exist for nodes mostly so labels with
+special characters (colons, commas, parens) don't need awkward
+quoting — *not* so you can write paragraphs in boxes. If you find
+yourself wanting to explain what a node *does*, that belongs on the
+next token that touches it.
 
 **Multi-label token carousels:** tokens accept multiple labels in
 sequence; the chip cycles through them while the token travels.
@@ -397,38 +432,102 @@ client -> api "GET /user" "check ACL" "200"
 Don't overuse — three labels max, and only when each carries different
 information.
 
-**Token labels accept `|…|` multi-line blocks too — and this is what
-makes a diagram *narrate* instead of just *moving*.** The token chip
-is a tiny speech bubble travelling along the edge; with `|…|` you can
-put a real sentence in it. Use this whenever a viewer would otherwise
-ask "wait, what was *that*?" between frames.
+**Token labels accept `|…|` multi-line blocks — and this is the
+default, not the exception.** Multi-line tokens are how the chip
+*narrates* instead of merely *labelling*. They render as a
+Nintendo-style speech bubble: each `\n`-separated line cycles through
+the chip in sequence while the dot travels along the edge, one line
+visible at a time. The viewer reads them as a single thought
+accreting.
 
 ```
-client -> api |POST /order
-adds line items
-returns 201 + Location|
+api -> cache |LOOKUP user:42
+checks the cache,
+since reads should be fast|
 ```
 
-**When to reach for it on tokens:**
+The viewer sees three frames of chip text in order:
+`LOOKUP user:42` → `checks the cache,` → `since reads should be fast`.
 
-- The token represents a *decision* the viewer needs to understand,
-  not just a hop (`|cache HIT
-skip DB, return cached row|`).
-- The action carries a surprising precondition or postcondition
-  (`|publish event
-fire-and-forget — caller doesn't await|`).
-- The hop *is* the explanation (one beat that teaches what this edge
-  does, instead of a separate description elsewhere).
+#### Five rules that make tokens read like English
 
-**Keep it terse — full sentences, but short ones.** Three lines max,
-≤ 40 chars per line. The chip renders inline with the moving dot; a
-paragraph here will dominate the frame and slow the animation. Aim
-for the cadence of footnotes, not paragraphs.
+These are the rules that separate good multi-line tokens from labels
+that feel like disconnected bullet points.
 
-**Mix freely with short labels.** Most tokens stay as `"GET"` or
-`"SELECT"` — quick, mechanical. Reserve `|…|` for the 1-2 beats per
-animation that earn explanation. If every token has a `|…|` you've
-written a slideshow, not an animation.
+**1. Line 1 is the operation. Lines 2-N are the present-tense
+description of *that* operation.** Don't switch topic between lines.
+
+```
+# Good — one continuous sentence.
+api -> cache |LOOKUP user:42
+checks the cache,
+since reads should be fast|
+
+# Bad — three unrelated observations stapled together.
+api -> cache |LOOKUP user:42
+the simplest possible read
+just the two of us so far|
+```
+
+**2. Stay in the moment. No timeline narration.** Frame names carry
+chronology; tokens describe their own hop. Phrases like *"moments
+later"*, *"the same read as before"*, *"now with the new cache"* are
+narrator-voice — they belong in the frame name, not the chip.
+
+```
+# Good — describes what THIS token is doing.
+client -> api |GET /user/42
+asks for the row we
+just overwrote|
+
+# Bad — meta-commentary about timeline.
+client -> api |moments later,
+another GET for user 42|
+```
+
+**3. Break at clause boundaries, not topic boundaries.** Read the
+block aloud as one sentence. If you naturally pause between two
+lines, that's where the line break belongs. If the two lines could
+swap order without breaking meaning, they aren't a sentence —
+they're a bullet list, and you've written the wrong thing.
+
+```
+# Good — commas and dashes carry the eye into the next line.
+client <- api |200 OK
+but the row is stale --
+the user sees old data|
+
+# Bad — three independent statements.
+client <- api |200 OK
+cache returned old data
+this is the bug|
+```
+
+**4. Don't mix registers within a block.** If line 1 is code
+(`POST /user`, `SELECT`, `HIT`), lines 2-N describe *that code's
+effect* in plain language — they don't switch to narrator commentary
+about the system as a whole.
+
+**5. Three lines, ≤ 30 chars each.** The chip cycles through your
+lines roughly every ~0.5s. A line longer than ~30 chars rushes the
+reader; more than 3 lines makes the cycle outlast the dot's flight,
+leaving the viewer staring at trailing text after the action is
+over. If you need more, you've packed two ideas into one token —
+split into two consecutive tokens, each with its own short block.
+
+**When a single word is enough:** glue tokens whose only job is to
+move the dot along a chain you've already explained.  `"SELECT"`
+after a multi-line "the cache missed, so we fall through" is fine —
+the previous beat set up what's about to happen. The rule is **earn
+brevity from context**, not from terseness for its own sake.
+
+**Multi-label carousels vs. multi-line blocks.** Quoted multi-labels
+(`a -> b "x" "y" "z"`) and a single `|…|` block both cycle the chip
+through several texts. Use multi-labels when the texts are *discrete
+beats* (e.g. `"GET /user" "200 OK" "cached"` — three independent
+status snapshots). Use `|…|` when the texts are *one sentence in
+pieces*. Don't mix the two in a single token unless you really need
+both effects.
 
 (`:` rest-of-line is *not* supported on tokens — it would eat the next
 token in a chained sequence. Use `|…|` or quoted strings.)
@@ -519,7 +618,8 @@ mismatch on macOS 26, the user needs to update Command Line Tools.
 ## CLI reference
 
 ```
-markgraf [INPUT] [-o out.mp4] [--fps 60] [--scale 2.0] [--play] [--check]
+markgraf [INPUT] [-o out.mp4] [--fps 60] [--scale 2.0] [--play]
+         [--gif PATH] [--svg PATH] [--sequence PATH] [--check] [--version]
 ```
 
 `INPUT` is optional: omit it to read from stdin (`pbpaste | markgraf --play`),
@@ -531,11 +631,14 @@ pass a path to read a file, or pass `-` for explicit stdin.
 | `-o, --output PATH` | `out.mp4` | output video path; container chosen by extension |
 | `--fps INT` | `60` | render frame rate |
 | `--scale NUMBER` | `2.0` | resolution multiplier; `2.0` is retina-quality |
-| `--play` | off | open the native macOS player instead of encoding |
+| `--play` | off | open the native player window instead of encoding. On darwin this is the Metal/AppKit "liquid glass" player by default; set `MARKGRAF_RENDERER=ebiten` to force the cross-platform ebiten player. |
+| `--gif PATH` | — | render only the keyframes as an animated GIF (one frame per scene span) |
+| `--svg PATH` | — | render keyframes as a SMIL-animated SVG (vector equivalent of `--gif`) |
+| `--sequence PATH` | — | render as a static UML sequence-diagram PNG (no time axis, one image) |
 | `--check` | off | parse + validate only; print `OK` (exit 0) or `[ERROR] …` (exit 1). No rendering. Use this to typecheck your file. |
+| `-v, --version` | off | print version and exit |
 
-ffmpeg is embedded — no system dependency. CLI is darwin-arm64 only as of
-v0.1.0.
+ffmpeg is embedded — no system dependency. CLI is darwin-arm64 only.
 
 ---
 
@@ -632,76 +735,163 @@ Four frames. Each does one thing. Parses, renders, viewer comes away
 with "API writes to DB and invalidates the cache, then responds."
 Fine. Not memorable.
 
-### Great (same content, structured)
+### Great (same content, structured, narrated)
+
+The full source:
 
 ```
-frame setup {
+seed 1
+
+frame "a simple read" {
   +node client "Client"
   +node api    "API"
-  +node db     "Database"
-  +node cache  "Cache"
   +edge client api
+
+  client -> api |GET /user/42
+asks the API
+for one user record|
+}
+
+frame "DB joins the story" {
+  +node db "Database"
   +edge api db
+
+  client -> api |GET /user/42
+arrives at the API|
+
+  api -> db |the API falls through
+to the source of truth|
+
+  api <- db |the row comes back,
+fresh from disk|
+
+  client <- api |200 OK
+correct, but every read
+costs a DB round trip|
+}
+
+frame "add a cache to speed up reads" {
+  +node cache "Cache"
   +edge api cache
 }
 
 frame "naive write: forget the cache" {
-  client -> api "POST /user"
-  api -> db "INSERT"
-  client <- api "201"
+  client -> api |POST /user/42
+updates the user's row|
+
+  api -> db |INSERT
+writes to the DB,
+the source of truth|
+
+  client <- api |201 Created
+looks fine, but the cache
+still holds the OLD row|
 }
 
-frame "the catch" {
+frame "the catch: a stale read" {
   client -> api |GET /user/42
-returns STALE value
-from cache|
-  api <- cache "old row"
-  client <- api "200 (stale!)"
+asks for the row we
+just overwrote|
+
+  api -> cache |LOOKUP user:42
+checks the cache,
+since reads should be fast|
+
+  api <- cache |HIT
+the cache returns
+the pre-write value|
+
+  client <- api |200 OK
+but the row is stale --
+the user sees old data|
 }
 
 frame "fix: invalidate on write" {
-  client -> api "POST /user"
-  api -> db "INSERT"
+  client -> api |POST /user/42
+updates the user's row|
+
+  api -> db |INSERT
+writes to the DB|
+
   par {
-    api -> cache "DEL user:42"
-    client <- api "201"
+    api -> cache |DEL user:42
+drops the cache entry
+so the next read refills|
+
+    client <- api |201 Created
+responds in parallel,
+no waiting on the cache|
   }
 }
 
-frame "rerun: GET now hits DB and refills" {
-  client -> api "GET /user/42"
-  api -> cache "MISS"
-  api -> db "SELECT"
-  api <- db "fresh row"
-  client <- api "200 (fresh)"
+frame "rerun: same GET, now correct" {
+  client -> api |GET /user/42
+asks for the row again|
+
+  api -> cache |LOOKUP user:42
+checks the cache first|
+
+  api <- cache |MISS
+the cache was just
+invalidated|
+
+  api -> db |SELECT
+falls through to the DB|
+
+  api <- db |the fresh row
+comes back from disk|
+
+  client <- api |200 OK
+the user sees the
+correct, current row|
 }
 ```
 
-Five frames. Setup, *naive* (writes but ignores cache), *catch*
-(viewer watches a stale read — the surprise), *fix* (structural
-addition: cache invalidation), *rerun* (the same GET now does the
-right thing, and the viewer sees it). Same boxes, same edges, same
-total information — but now the diagram *teaches*.
+The shape:
 
-**What changed:**
+- **F1 "a simple read":** introduce `Client` + `API` only. One
+  token: `client -> api |GET /user/42 / the simplest possible read
+  / just the two of us so far|`. Two nodes, one beat, viewer locked
+  in.
+- **F2 "DB joins the story":** introduce `Database`. Show the full
+  client→api→db→back round trip with multi-line tokens that
+  narrate "slow but always correct". Now the viewer cares about
+  performance.
+- **F3 "add a cache to speed up reads":** introduce `Cache` as a
+  structural change only. One frame, one reveal, no flow yet.
+- **F4 "naive write: forget the cache":** the write happens.
+  Multi-line tokens narrate "doesn't touch cache", "looks fine!",
+  "but the cache is now stale". The setup for the catch.
+- **F5 "the catch: a stale read":** the same `GET /user/42`. The
+  cache returns stale. Multi-line `200 OK (stale!)` token tells the
+  viewer: this is the bug.
+- **F6 "fix: invalidate on write":** the same write, but with
+  `par { DEL user:42, 201 Created }` — invalidation and response in
+  parallel.
+- **F7 "rerun: same GET, now correct":** chained miss→DB→fresh row,
+  returning `200 OK (fresh)`. The viewer literally watches the system
+  do the right thing.
 
-- Added a *naive* frame that's deliberately wrong, so the *fix* has
-  something to fix.
-- The `|…|` multi-line on the stale GET is a footnote the viewer
-  needs *at that moment* (without it, "200 (stale!)" might not land).
-- `par` in the fix frame makes "invalidate happens at the same time
-  as the response" visually true — not "and then, separately…".
-- Chained tokens in the rerun frame (`api -> cache "MISS"` then
-  `api -> db "SELECT"`) render as one motion: the viewer watches a
-  single dot navigate the new shape.
-- Reverse tokens (`<-`) throughout. No paired-edge clutter.
-- Frame names *narrate*: "the catch", "fix", "rerun" — the viewer
-  knows what each beat is *for*.
+**What's different from the "good" version:**
+
+- **Nodes introduced one at a time.** Each new actor enters when the
+  story needs it. The viewer's mental model accretes; nothing's
+  dumped on them upfront.
+- **Tokens narrate.** Every meaningful token is a `|…|` block of 2-4
+  lines. Node labels stay one-word.
+- **Naive → catch → fix → rerun structure.** F4-F5 set up the bug
+  before the fix exists; F6-F7 show the fix working on the same flow.
+- **`par` in the fix frame** makes "invalidate and respond at the
+  same time" visually true.
+- **Chained tokens in F7** (cache MISS → DB SELECT → fresh row →
+  200): a single moving dot navigates the new shape.
+- **Reverse tokens (`<-`)** throughout. One edge per channel.
+- **Frame names narrate.** "the catch", "fix", "rerun" — the viewer
+  always knows what each beat is *for*.
 
 The difference between these is not skill at markgraf; it's whether
-you did the planning step at the top before writing. If you find your
-first draft looks like the "good" version, your task is to identify
-the missing *naive → catch → fix* arc and rewrite around it.
+you did the planning step at the top before writing, and whether
+you trusted multi-line tokens to carry the explanation.
 
 ---
 
