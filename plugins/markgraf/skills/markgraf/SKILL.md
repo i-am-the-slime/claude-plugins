@@ -603,6 +603,61 @@ frame setup { ... }
 +node a "A"     # trailing comments work too
 ```
 
+### Dives (C4 drill-down)
+
+A **dive** flies the camera *into* a node to reveal a sub-diagram hidden behind
+it, then back out — the animated equivalent of zooming from a C4 Context diagram
+into Containers, then into Components. Three pieces:
+
+- **`inside <node> { … }`** — a top-level block (a sibling of `frame`, not nested
+  in one) that holds the sub-diagram behind `<node>`. Its body is an ordinary
+  document of frames. These blocks **nest to any depth**.
+- **`enter <node>`** — a statement inside a frame. It flies the camera into
+  `<node>` and then plays that node's `inside { … }` sub-film in full.
+- **`exit`** — a statement that flies the camera back out to the parent level
+  after the sub-film. Pair it with `enter` in a short transition frame.
+
+```
+# Level 1 — Context
+frame "the system" {
+  +node customer "Customer"
+  +node bank "Internet Banking"
+  +edge customer bank
+}
+
+frame "zoom in" {
+  enter bank          # dive into `bank`, play its interior, …
+  exit                # … then fly back out
+}
+
+# Level 2 — Containers, hidden behind `bank`
+inside bank {
+  frame "the moving parts" {
+    +node spa "SPA"
+    +node api "API"
+    +edge spa api
+  }
+
+  frame "deeper" {
+    enter api
+    exit
+  }
+
+  # Level 3 — Components, hidden behind `api`
+  inside api {
+    frame "controllers" {
+      +node signin "Sign In"
+      +node security "Security"
+      +edge signin security
+    }
+  }
+}
+```
+
+Rules: the node you `enter` must exist in the parent level and must have a
+matching `inside` block; dives nest by nesting `inside` blocks. `--check`
+validates all of this.
+
 ---
 
 ## Install
@@ -618,8 +673,8 @@ mismatch on macOS 26, the user needs to update Command Line Tools.
 ## CLI reference
 
 ```
-markgraf [INPUT] [-o out.mp4] [--fps 60] [--scale 2.0] [--play]
-         [--gif PATH] [--svg PATH] [--sequence PATH] [--check] [--version]
+markgraf [INPUT] [-o out.mp4] [--fps 60] [--scale 2.0] [--theme NAME]
+         [--play] [--terminal] [--sequence PATH] [--check] [--version]
 ```
 
 `INPUT` is optional: omit it to read from stdin (`pbpaste | markgraf --play`),
@@ -631,12 +686,31 @@ pass a path to read a file, or pass `-` for explicit stdin.
 | `-o, --output PATH` | `out.mp4` | output video path; container chosen by extension |
 | `--fps INT` | `60` | render frame rate |
 | `--scale NUMBER` | `2.0` | resolution multiplier; `2.0` is retina-quality |
+| `--max-width PX` | — | cap output width in pixels; diagram aspect preserved (fits inside the max-width/max-height box) |
+| `--max-height PX` | — | cap output height in pixels; diagram aspect preserved |
+| `--min-text-px PX` | `12` | minimum on-screen text size; the camera zooms in further on small outputs to keep labels readable. `0` disables it (pure fit-all framing). |
+| `--theme NAME` | `light` | look: `light \| dark \| blueprint \| whiteboard \| isometric` — see **Themes** below |
 | `--play` | off | open the native player window instead of encoding. On darwin this is the Metal/AppKit "liquid glass" player by default; set `MARKGRAF_RENDERER=ebiten` to force the cross-platform ebiten player. |
-| `--gif PATH` | — | render only the keyframes as an animated GIF (one frame per scene span) |
-| `--svg PATH` | — | render keyframes as a SMIL-animated SVG (vector equivalent of `--gif`) |
+| `--terminal` | off | play the animation in the terminal as ANSI (space: pause, ←/→: step, q: quit) |
 | `--sequence PATH` | — | render as a static UML sequence-diagram PNG (no time axis, one image) |
 | `--check` | off | parse + validate only; print `OK` (exit 0) or `[ERROR] …` (exit 1). No rendering. Use this to typecheck your file. |
 | `-v, --version` | off | print version and exit |
+
+### Themes
+
+`--theme` picks the visual look; it does **not** change your source. The diagram
+is identical across themes — only the rendering differs.
+
+| Theme | Look |
+|---|---|
+| `light` | default — clean light background, solid node fills |
+| `dark` | dark background variant of `light` |
+| `blueprint` | technical blueprint overlay (blue grid, drafting look) |
+| `whiteboard` | hand-drawn sketch — roughened strokes, marker fills, eraser sweeps on `-node` |
+| `isometric` | extrudes every node into a 3D slab on a ground plane; edges run on the floor, labels sit on the slab faces |
+
+The theme is orthogonal to the grammar — author your `.markgraf` once and re-render
+with any `--theme` to change the aesthetic.
 
 ffmpeg is embedded — no system dependency. CLI is darwin-arm64 only.
 
