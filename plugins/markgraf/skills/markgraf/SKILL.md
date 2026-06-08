@@ -29,7 +29,7 @@ There are two distinct kinds of beats:
    are little circles that morph out of one node, slide along the edge, and
    morph into the next node.
 
-A single `frame { … }` block can mix both — the engine sorts the structural
+A single `keyframe { … }` block can mix both — the engine sorts the structural
 operations to the start of the frame and runs flow ops afterwards. But a clean
 mental model is: **one beat per frame**. Mixing structural and flow inside one
 frame works but is harder to read on the page.
@@ -115,8 +115,8 @@ the fastest way to produce a noun-pile:
 
 Concrete rules for markgraf:
 
-- **State the level in the first frame name.** `frame "container view"`
-  or `frame "component view: api"`. The viewer needs to know what
+- **State the level in the first frame name.** `keyframe "container view"`
+  or `keyframe "component view: api"`. The viewer needs to know what
   altitude they're at before the first token moves.
 - **Don't cross levels in one file.** If you need to "zoom in", make a
   *separate* `.markgraf` — the C4 insight is that each level is its
@@ -179,7 +179,7 @@ Concrete signs the diagram is too linear:
 ### Plan before you write a single frame
 
 This is the step that separates correct diagrams from amazing ones. Do
-this work *in your head or as a comment* before any `frame { … }` is
+this work *in your head or as a comment* before any `keyframe { … }` is
 written. If you can't answer all six, you don't have a diagram yet.
 
 1. **The claim.** One sentence: "this animation shows that X." If you
@@ -255,7 +255,7 @@ moment of *change*. Three pillars:
 - **One concept per frame.** "introduce cache" should *only* introduce the
   cache. Don't bolt a flow on the same beat — the viewer is busy parsing the
   shape change.
-- **Always name your frames.** `frame "introduce cache" { … }` reads as a
+- **Always name your frames.** `keyframe "introduce cache" { … }` reads as a
   table of contents at the top of the file. Unnamed frames are anonymous in
   the player's keyframe scrubber.
 - **Use `par { }` to make things happen at the same time.** Default sequencing
@@ -286,8 +286,8 @@ instant read as a real fan-out; the same two ops in series read as
 
 ```
 par {
-  api -> cache "HIT"      -- both legs leave the API
-  api -> logger "trace"   -- in the same instant
+  api -> cache "HIT"      # both legs leave the API
+  api -> logger "trace"   # in the same instant
 }
 ```
 
@@ -307,9 +307,9 @@ flowing through the stack. This single mechanic is what makes
 markgraf feel different from a sequence diagram. Use it.
 
 ```
-frame "request" {
-  client -> api "GET"            -- chain: dot leaves client, passes through
-  api -> db "SELECT"             -- api, terminates at db — one motion
+keyframe "request" {
+  client -> api "GET"            # chain: dot leaves client, passes through
+  api -> db "SELECT"             # api, terminates at db — one motion
 }
 ```
 
@@ -375,8 +375,8 @@ change the graph shape (structural) or move data along it (flow).
 ### Frames
 
 ```
-frame setup { +node a "A" +node b "B" +edge a b }
-frame "first request" { a -> b "hello" }
+keyframe setup { +node a "A" +node b "B" +edge a b }
+keyframe "first request" { a -> b "hello" }
 ```
 
 Names are unquoted identifiers (`setup`, `cache_hit`) or quoted strings
@@ -568,7 +568,7 @@ already pointing the request way.
 ### Concurrency: `par` and `seq`
 
 ```
-frame "cache hit" {
+keyframe "cache hit" {
   client -> api "GET"
   par {
     api -> cache "HIT"
@@ -593,7 +593,7 @@ par {
 ```
 seed 1                  # optional, controls layout RNG (default 0)
 
-frame setup { ... }
+keyframe setup { ... }
 ```
 
 ### Comments
@@ -609,7 +609,7 @@ A **dive** flies the camera *into* a node to reveal a sub-diagram hidden behind
 it, then back out — the animated equivalent of zooming from a C4 Context diagram
 into Containers, then into Components. Three pieces:
 
-- **`inside <node> { … }`** — a top-level block (a sibling of `frame`, not nested
+- **`inside <node> { … }`** — a top-level block (a sibling of `keyframe`, not nested
   in one) that holds the sub-diagram behind `<node>`. Its body is an ordinary
   document of frames. These blocks **nest to any depth**.
 - **`enter <node>`** — a statement inside a frame. It flies the camera into
@@ -619,33 +619,33 @@ into Containers, then into Components. Three pieces:
 
 ```
 # Level 1 — Context
-frame "the system" {
+keyframe "the system" {
   +node customer "Customer"
   +node bank "Internet Banking"
   +edge customer bank
 }
 
-frame "zoom in" {
+keyframe "zoom in" {
   enter bank          # dive into `bank`, play its interior, …
   exit                # … then fly back out
 }
 
 # Level 2 — Containers, hidden behind `bank`
 inside bank {
-  frame "the moving parts" {
+  keyframe "the moving parts" {
     +node spa "SPA"
     +node api "API"
     +edge spa api
   }
 
-  frame "deeper" {
+  keyframe "deeper" {
     enter api
     exit
   }
 
   # Level 3 — Components, hidden behind `api`
   inside api {
-    frame "controllers" {
+    keyframe "controllers" {
       +node signin "Sign In"
       +node security "Security"
       +edge signin security
@@ -721,7 +721,7 @@ ffmpeg is embedded — no system dependency. CLI is darwin-arm64 only.
 ```
 seed 1
 
-frame setup {
+keyframe setup {
   +node client "Client"
   +node api "API"
   +node db "Database"
@@ -729,32 +729,32 @@ frame setup {
   +edge api db
 }
 
-frame "direct read" {
+keyframe "direct read" {
   client -> api "GET /user/42"
   api -> db "SELECT"
   api <- db "rows"
   client <- api "200 OK"
 }
 
-frame "introduce cache" {
+keyframe "introduce cache" {
   +node cache "Cache"
   -edge api db
   +edge api cache
 }
 
-frame "cache hit" {
+keyframe "cache hit" {
   client -> api "GET /user/42"
   api -> cache "HIT"
   api <- cache "value"
   client <- api "200 OK"
 }
 
-frame "introduce queue" {
+keyframe "introduce queue" {
   +node queue "Queue"
   +edge api queue
 }
 
-frame publish {
+keyframe publish {
   client -> api "POST /order"
   api -> queue "publish (async)"
 }
@@ -781,7 +781,7 @@ The second teaches.
 ### Good (correct, dull)
 
 ```
-frame setup {
+keyframe setup {
   +node client "Client"
   +node api    "API"
   +node db     "Database"
@@ -791,16 +791,16 @@ frame setup {
   +edge api cache
 }
 
-frame "write request" {
+keyframe "write request" {
   client -> api "POST /user"
   api -> db "INSERT"
 }
 
-frame "invalidate cache" {
+keyframe "invalidate cache" {
   api -> cache "DEL user:42"
 }
 
-frame "respond" {
+keyframe "respond" {
   client <- api "201"
 }
 ```
@@ -816,7 +816,7 @@ The full source:
 ```
 seed 1
 
-frame "a simple read" {
+keyframe "a simple read" {
   +node client "Client"
   +node api    "API"
   +edge client api
@@ -826,7 +826,7 @@ asks the API
 for one user record|
 }
 
-frame "DB joins the story" {
+keyframe "DB joins the story" {
   +node db "Database"
   +edge api db
 
@@ -844,12 +844,12 @@ correct, but every read
 costs a DB round trip|
 }
 
-frame "add a cache to speed up reads" {
+keyframe "add a cache to speed up reads" {
   +node cache "Cache"
   +edge api cache
 }
 
-frame "naive write: forget the cache" {
+keyframe "naive write: forget the cache" {
   client -> api |POST /user/42
 updates the user's row|
 
@@ -862,7 +862,7 @@ looks fine, but the cache
 still holds the OLD row|
 }
 
-frame "the catch: a stale read" {
+keyframe "the catch: a stale read" {
   client -> api |GET /user/42
 asks for the row we
 just overwrote|
@@ -880,7 +880,7 @@ but the row is stale --
 the user sees old data|
 }
 
-frame "fix: invalidate on write" {
+keyframe "fix: invalidate on write" {
   client -> api |POST /user/42
 updates the user's row|
 
@@ -898,7 +898,7 @@ no waiting on the cache|
   }
 }
 
-frame "rerun: same GET, now correct" {
+keyframe "rerun: same GET, now correct" {
   client -> api |GET /user/42
 asks for the row again|
 
@@ -994,7 +994,7 @@ markgraf path/to/foo.markgraf --check
 
 `--check` catches mechanical errors. It does not catch *taste* errors:
 
-- Read each `frame { … }` aloud as a sentence in plain English ("the
+- Read each `keyframe { … }` aloud as a sentence in plain English ("the
   API fans out: it queues a publish *and* logs a trace"). If you
   can't, the frame is doing too much — split it.
 - Default timing is tuned for a "narrating-while-presenting" cadence
