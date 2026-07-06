@@ -1,7 +1,7 @@
 {
   "name": "markgraf",
-  "description": "Authoring rules + grammar reference for the markgraf animation language",
-  "version": "0.1.4",
+  "description": "Authoring rules and grammar for the Markgraf animation language",
+  "version": "0.1.5",
   "author": {
     "name": "Mark Eibes"
   }

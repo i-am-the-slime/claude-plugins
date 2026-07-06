@@ -9,7 +9,7 @@
     {
       "name": "markgraf",
       "source": "./plugins/markgraf",
-      "description": "Authoring rules + grammar reference for the markgraf animation language"
+      "description": "Authoring rules and grammar for the Markgraf animation language"
     }
   ]
 }
